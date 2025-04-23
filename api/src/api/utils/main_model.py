@@ -1,5 +1,5 @@
 from google import genai
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable, Union
 
 API_KEY = "AIzaSyAJn0jBzUsraivbwutwbNl-J0lerX90nCQ"
 
@@ -116,6 +116,10 @@ class GeminiModel:
         self.client = genai.Client(api_key=self.api_key)
         self.model_name = "gemini-2.0-flash"
 
+        # Tool registry for storing available tools
+        self._tool_registry: Dict[str, Dict[str, Any]] = {}
+        self._tool_executors: Dict[str, Callable] = {}
+
     def generate_response(self,
                           messages: List[Dict[str, str]],
                           system_prompt: Optional[str] = None) -> str:
@@ -158,6 +162,209 @@ class GeminiModel:
         except Exception as e:
             return f"Error generating response: {str(e)}"
 
+    def generate_with_tools(self,
+                            messages: List[Dict[str, str]],
+                            tools: List[Dict[str, Any]],
+                            system_prompt: Optional[str] = None) -> Dict[str, Any]:
+        """Generate a response using the Gemini model with tool use capability.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+            tools: List of tool definitions in the MCP format
+            system_prompt: Optional system prompt to override the default
+
+        Returns:
+            A dictionary containing the model response with potential tool calls
+        """
+        # Format messages for Gemini
+        prompt = system_prompt or ORCHESTRATION_SYSTEM
+
+        # Create a list of contents for the Gemini API
+        contents = [prompt]
+
+        # Add all messages to the contents
+        for msg in messages:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(
+                {"role": role, "parts": [{"text": msg["content"]}]})
+
+        try:
+            # Convert MCP tools format to Gemini's function declarations format
+            function_declarations = []
+            for tool in tools:
+                function_declaration = {
+                    "name": tool["name"],
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters", {})
+                }
+                function_declarations.append(function_declaration)
+
+            # Make API call with function calling enabled
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                generation_config={"function_calling_config": {"mode": "any"}},
+                function_declarations=function_declarations
+            )
+
+            # Process the response
+            result = {
+                "content": "",
+                "tool_calls": []
+            }
+
+            # Extract content and tool calls
+            if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+
+                # Extract content text
+                if hasattr(candidate, 'content') and candidate.content.parts:
+                    result["content"] = candidate.content.parts[0].text
+
+                # Extract function calls
+                if hasattr(candidate.content, 'parts'):
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'function_call'):
+                            tool_call = {
+                                "name": part.function_call.name,
+                                "arguments": part.function_call.args
+                            }
+                            result["tool_calls"].append(tool_call)
+
+            return result
+
+        except Exception as e:
+            return {"content": f"Error generating response: {str(e)}", "tool_calls": []}
+
+    def process_tool_execution(self,
+                               messages: List[Dict[str, str]],
+                               tools: List[Dict[str, Any]],
+                               tool_executors: Dict[str, Callable],
+                               system_prompt: Optional[str] = None) -> Dict[str, Any]:
+        """Generate a response with tool use and execute the tools automatically.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+            tools: List of tool definitions in the MCP format
+            tool_executors: Dictionary mapping tool names to their executor functions
+            system_prompt: Optional system prompt to override the default
+
+        Returns:
+            The final response after tool execution
+        """
+        # Get initial response with potential tool calls
+        response = self.generate_with_tools(messages, tools, system_prompt)
+
+        # Check if there are tool calls to execute
+        if not response["tool_calls"]:
+            return {"content": response["content"], "tool_results": []}
+
+        # Execute tools and collect results
+        tool_results = []
+        for tool_call in response["tool_calls"]:
+            tool_name = tool_call["name"]
+            arguments = tool_call["arguments"]
+
+            if tool_name in tool_executors:
+                try:
+                    # Execute the tool
+                    result = tool_executors[tool_name](**arguments)
+                    tool_results.append({
+                        "name": tool_name,
+                        "result": result
+                    })
+
+                    # Add the tool execution as a new message
+                    tool_message = {
+                        "role": "user",
+                        "content": f"Tool execution result for {tool_name}: {result}"
+                    }
+                    messages.append(tool_message)
+                except Exception as e:
+                    error_msg = f"Error executing tool {tool_name}: {str(e)}"
+                    tool_results.append({
+                        "name": tool_name,
+                        "error": error_msg
+                    })
+                    messages.append({
+                        "role": "user",
+                        "content": error_msg
+                    })
+            else:
+                error_msg = f"Tool {tool_name} not found in available executors"
+                tool_results.append({
+                    "name": tool_name,
+                    "error": error_msg
+                })
+                messages.append({
+                    "role": "user",
+                    "content": error_msg
+                })
+
+        # Get final response after tool execution
+        final_response = self.generate_response(messages, system_prompt)
+
+        return {
+            "content": final_response,
+            "tool_results": tool_results
+        }
+
+    def register_tool(self, tool_def: Dict[str, Any], executor: Callable) -> None:
+        """Register a tool with the model.
+
+        Args:
+            tool_def: Tool definition in the MCP format
+            executor: Function to execute when the tool is called
+        """
+        name = tool_def.get("name")
+        if not name:
+            raise ValueError("Tool definition must include a 'name' field")
+
+        self._tool_registry[name] = tool_def
+        self._tool_executors[name] = executor
+
+    def unregister_tool(self, name: str) -> bool:
+        """Unregister a tool from the model.
+
+        Args:
+            name: Name of the tool to unregister
+
+        Returns:
+            True if the tool was found and unregistered, False otherwise
+        """
+        if name in self._tool_registry:
+            del self._tool_registry[name]
+            del self._tool_executors[name]
+            return True
+        return False
+
+    def get_registered_tools(self) -> List[Dict[str, Any]]:
+        """Get all registered tools.
+
+        Returns:
+            List of tool definitions
+        """
+        return list(self._tool_registry.values())
+
+    def process_with_registered_tools(self,
+                                      messages: List[Dict[str, str]],
+                                      system_prompt: Optional[str] = None) -> Dict[str, Any]:
+        """Generate a response with all registered tools.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+            system_prompt: Optional system prompt to override the default
+
+        Returns:
+            The final response after tool execution
+        """
+        return self.process_tool_execution(
+            messages=messages,
+            tools=list(self._tool_registry.values()),
+            tool_executors=self._tool_executors,
+            system_prompt=system_prompt
+        )
+
 
 # Create a singleton instance
 gemini_model = GeminiModel()
@@ -175,3 +382,76 @@ def get_gemini_response(messages: List[Dict[str, str]]) -> str:
     return gemini_model.generate_response(messages)
 
 
+def get_gemini_with_tools(messages: List[Dict[str, str]],
+                          tools: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Utility function to get a response from the Gemini model with tool support.
+
+    Args:
+        messages: List of message dictionaries with 'role' and 'content' keys
+        tools: List of tool definitions in the MCP format
+
+    Returns:
+        Dictionary containing the model response and potential tool calls
+    """
+    return gemini_model.generate_with_tools(messages, tools)
+
+
+def execute_gemini_with_tools(messages: List[Dict[str, str]],
+                              tools: List[Dict[str, Any]],
+                              tool_executors: Dict[str, Callable]) -> Dict[str, Any]:
+    """Utility function to execute a full tool-using conversation with Gemini.
+
+    Args:
+        messages: List of message dictionaries with 'role' and 'content' keys
+        tools: List of tool definitions in the MCP format
+        tool_executors: Dictionary mapping tool names to their executor functions
+
+    Returns:
+        The final response after tool execution
+    """
+    return gemini_model.process_tool_execution(messages, tools, tool_executors)
+
+
+def register_tool(tool_def: Dict[str, Any], executor: Callable) -> None:
+    """Register a tool with the singleton model instance.
+
+    Args:
+        tool_def: Tool definition in the MCP format
+        executor: Function to execute when the tool is called
+    """
+    gemini_model.register_tool(tool_def, executor)
+
+
+def unregister_tool(name: str) -> bool:
+    """Unregister a tool from the singleton model instance.
+
+    Args:
+        name: Name of the tool to unregister
+
+    Returns:
+        True if the tool was found and unregistered, False otherwise
+    """
+    return gemini_model.unregister_tool(name)
+
+
+def get_registered_tools() -> List[Dict[str, Any]]:
+    """Get all registered tools from the singleton model instance.
+
+    Returns:
+        List of tool definitions
+    """
+    return gemini_model.get_registered_tools()
+
+
+def execute_with_registered_tools(messages: List[Dict[str, str]],
+                                  system_prompt: Optional[str] = None) -> Dict[str, Any]:
+    """Generate a response with all registered tools from the singleton model instance.
+
+    Args:
+        messages: List of message dictionaries with 'role' and 'content' keys
+        system_prompt: Optional system prompt to override the default
+
+    Returns:
+        The final response after tool execution
+    """
+    return gemini_model.process_with_registered_tools(messages, system_prompt)
