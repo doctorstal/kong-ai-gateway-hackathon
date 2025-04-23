@@ -348,7 +348,15 @@ class CouchbaseChatClient:
 
         now = datetime.utcnow().isoformat()
         doc = {
-            "knowledge_base": config.knowledge_base,
+            "knowledge_base": [
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "content": item.content,
+                    "category": item.category,
+                }
+                for item in config.knowledge_base
+            ],
             "actions": config.actions,
             "updated_at": now,
         }

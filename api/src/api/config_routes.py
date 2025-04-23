@@ -15,9 +15,9 @@ async def get_configuration(db: DbHandle) -> Configuration:
 
 
 @config_router.post("/current", response_model=MessageResponse)
-async def set_configuration(request: Configuration, db: DbHandle) -> bool:
+async def set_configuration(request: Configuration, db: DbHandle) -> MessageResponse:
     if db.set_configuration(request):
-        return MessageResponse("Succesfully updated configuration!")
+        return MessageResponse(message="Succesfully updated configuration!")
     else:
         raise HTTPException(status_code=500, detail="Failed to delete chat")
 
@@ -32,3 +32,4 @@ async def add_configuration(
         raise HTTPException(status_code=400, detail="Message content cannot be empty")
 
     return ConfigMessageResponse()
+

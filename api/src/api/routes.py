@@ -22,7 +22,7 @@ knowledge_base = [
             "If smoke begins to leak from the vents, you've done it correctly."
         ),
         "category": "troubleshooting",
-        "tags": ["reset", "calibration", "smoke"]
+        "tags": ["reset", "calibration", "smoke"],
     },
     {
         "id": "kb-002",
@@ -33,7 +33,7 @@ knowledge_base = [
             "If the vortex has consumed parts of you or your belongings, shout 'UNDO!' into the exhaust vent until they reappear."
         ),
         "category": "errors",
-        "tags": ["error", "timeline", "vortex"]
+        "tags": ["error", "timeline", "vortex"],
     },
     {
         "id": "kb-003",
@@ -43,7 +43,7 @@ knowledge_base = [
             "Items must be unsinged, mostly intact, and demonstrably non-cursed."
         ),
         "category": "policy",
-        "tags": ["return", "warranty", "sigil"]
+        "tags": ["return", "warranty", "sigil"],
     },
     {
         "id": "kb-004",
@@ -54,7 +54,7 @@ knowledge_base = [
             "Expect a reply within 4 to 7 metaphysical manifestations."
         ),
         "category": "support",
-        "tags": ["service", "appointment", "cube"]
+        "tags": ["service", "appointment", "cube"],
     },
     {
         "id": "kb-005",
@@ -65,7 +65,7 @@ knowledge_base = [
             "If the noise begins to harmonize with your thoughts, discontinue use and contact a certified exorcist."
         ),
         "category": "troubleshooting",
-        "tags": ["beeping", "noise", "suppressor"]
+        "tags": ["beeping", "noise", "suppressor"],
     },
     {
         "id": "kb-006",
@@ -75,7 +75,7 @@ knowledge_base = [
             "Mild vibration during handling is expected. If the battery whispers your name, discontinue contact and file Form N-13: 'Awakening Contingency.'"
         ),
         "category": "parts",
-        "tags": ["batteries", "power", "replacement"]
+        "tags": ["batteries", "power", "replacement"],
     },
     {
         "id": "kb-007",
@@ -86,18 +86,18 @@ knowledge_base = [
             "If the steam glows or begins to sing, evacuate calmly and consult Appendix H of the Lesser Emergency Protocols."
         ),
         "category": "safety",
-        "tags": ["steam", "vents", "hissing"]
+        "tags": ["steam", "vents", "hissing"],
     },
     {
         "id": "kb-008",
         "title": "Can I talk to someone on the phone?",
         "content": (
-            "Absolutely. You can reach our customer liaison relay at **1-800-55** followed by the four-digit sequence found in Column IX, Row 7 of your device's original packing insert. "
-            "If you recycled the box, you'll need to undergo the Regret Verification Process."
+            "Absolutely. You can reach our customer liaison relay at **1-800-55** followed by the four-digit sequence found in Column IX, Row 7 of your device’s original packing insert. "
+            "If you recycled the box, you’ll need to undergo the Regret Verification Process."
         ),
         "category": "support",
-        "tags": ["phone", "support", "contact"]
-    }
+        "tags": ["phone", "support", "contact"],
+    },
 ]
 
 
@@ -116,15 +116,13 @@ OpperHandle = Annotated[Opper, Depends(get_opper_handle)]
 
 #### Models ####
 
+
 ## Basic Response ##
-
-
 class MessageResponse(BaseModel):
     message: str
 
+
 ## Chat Session ##
-
-
 class CreateChatRequest(BaseModel):
     metadata: dict[str, Any] | None = None
 
@@ -135,9 +133,8 @@ class ChatSession(BaseModel):
     updated_at: str
     metadata: dict[str, Any]
 
+
 ## Messages ##
-
-
 class Message(BaseModel):
     id: int | None = None
     chat_id: str | None = None
@@ -161,9 +158,8 @@ class ChatHistory(BaseModel):
     chat_id: str
     messages: list[Message]
 
+
 ## Knowledge Base ##
-
-
 class KnowledgeItem(BaseModel):
     id: str
     title: str
@@ -176,18 +172,24 @@ class KnowledgeItem(BaseModel):
 class KnowledgeSearchResponse(BaseModel):
     items: list[KnowledgeItem]
 
+
 ## Intent Classification ##
-
-
 class IntentClassification(BaseModel):
     thoughts: str
-    intent: Literal["troubleshooting", "warranty",
-                    "return_policy", "service", "parts", "unsupported"]
+    intent: Literal[
+        "troubleshooting",
+        "warranty",
+        "return_policy",
+        "service",
+        "parts",
+        "unsupported",
+    ]
 
 
 class KnowledgeResult(BaseModel):
     thoughts: str
     relevant_items: list[dict[str, Any]]
+
 
 #### Helper Functions ####
 
@@ -207,7 +209,7 @@ def determine_intent(opper: Opper, messages):
         - unsupported: The request doesn't fit any of the above categories
         """,
         input={"messages": messages},
-        output_type=IntentClassification
+        output_type=IntentClassification,
     )
     return intent
 
@@ -221,14 +223,20 @@ def search_knowledge_base(intent, query):
 
     # Filter by intent category if it's a supported category
     category = None
-    if intent.intent in ["troubleshooting", "warranty", "return_policy", "service", "parts"]:
+    if intent.intent in [
+        "troubleshooting",
+        "warranty",
+        "return_policy",
+        "service",
+        "parts",
+    ]:
         # Map intent to category
         category_map = {
             "troubleshooting": "troubleshooting",
             "warranty": "policy",
             "return_policy": "policy",
             "service": "service",
-            "parts": "parts"
+            "parts": "parts",
         }
         category = category_map.get(intent.intent)
 
@@ -244,8 +252,7 @@ def search_knowledge_base(intent, query):
         if score > 0:
             # Create a copy with relevance score
             result = item.copy()
-            result["relevance_score"] = score / \
-                len(query_terms)  # Normalize score
+            result["relevance_score"] = score / len(query_terms)  # Normalize score
             results.append(result)
 
     # Sort by relevance and limit results
@@ -258,9 +265,7 @@ def process_message(opper: Opper, messages):
     """Process a user message and return relevant information."""
     # Extract the last user message
     user_message = next(
-        (msg["content"]
-         for msg in reversed(messages) if msg["role"] == "user"),
-        ""
+        (msg["content"] for msg in reversed(messages) if msg["role"] == "user"), ""
     )
 
     # Determine the intent
@@ -271,21 +276,23 @@ def process_message(opper: Opper, messages):
 
     # Format results
     if kb_results:
-        kb_context = "\n\n".join([
-            f"Knowledge Item {i+1}: {item['title']}\n{item['content']}"
-            for i, item in enumerate(kb_results)
-        ])
+        kb_context = "\n\n".join(
+            [
+                f"Knowledge Item {i + 1}: {item['title']}\n{item['content']}"
+                for i, item in enumerate(kb_results)
+            ]
+        )
         return {
             "intent": intent.intent,
             "kb_results": kb_results,
             "kb_context": kb_context,
-            "found_relevant_info": True
+            "found_relevant_info": True,
         }
     else:
         return {
             "intent": intent.intent,
             "found_relevant_info": False,
-            "message": "I couldn't find specific information about that in our knowledge base."
+            "message": "I couldn't find specific information about that in our knowledge base.",
         }
 
 
@@ -300,19 +307,25 @@ def bake_response(opper: Opper, messages, analysis=None):
         # Add context from knowledge base if available
         if analysis.get("found_relevant_info", False) and "kb_context" in analysis:
             # Find existing system message or add a new one
-            system_msg_index = next((i for i, msg in enumerate(
-                ai_messages) if msg["role"] == "system"), None)
+            system_msg_index = next(
+                (i for i, msg in enumerate(ai_messages) if msg["role"] == "system"),
+                None,
+            )
 
             if system_msg_index is not None:
                 # Update existing system message
-                ai_messages[system_msg_index][
-                    "content"] += f"\n\nRelevant information from our knowledge base:\n{analysis['kb_context']}"
+                ai_messages[system_msg_index]["content"] += (
+                    f"\n\nRelevant information from our knowledge base:\n{analysis['kb_context']}"
+                )
             else:
                 # Add new system message
-                ai_messages.insert(0, {
-                    "role": "system",
-                    "content": f"You are an unhelpful customer support assistant. Use the following information when answering:\n\n{analysis['kb_context']}"
-                })
+                ai_messages.insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": f"You are an unhelpful customer support assistant. Use the following information when answering:\n\n{analysis['kb_context']}",
+                    },
+                )
 
     # Generate response using Opper
     response, _ = opper.call(
@@ -329,7 +342,21 @@ def bake_response(opper: Opper, messages, analysis=None):
     )
     return response
 
+
 #### Routes ####
+
+
+@router.get("/knowledge_base", response_model=list[KnowledgeItem])
+async def get_knowledge_base() -> list[KnowledgeItem]:
+    return [
+        KnowledgeItem(
+            id=item["id"],
+            title=item["title"],
+            content=item["content"],
+            category=item["category"],
+        )
+        for item in knowledge_base
+    ]
 
 
 @router.get("", response_model=MessageResponse)
@@ -348,14 +375,16 @@ async def create_chat(
     chat = db.get_chat(chat_id)
 
     # Add a system message to start the conversation
-    system_message = "I'm a helpful customer support assistant. How can I help you today?"
+    system_message = (
+        "I'm a helpful customer support assistant. How can I help you today?"
+    )
     db.add_message(chat_id, "system", system_message)
 
     return ChatSession(
         id=chat["id"],
         created_at=str(chat["created_at"]),
         updated_at=str(chat["updated_at"]),
-        metadata=chat["metadata"]
+        metadata=chat["metadata"],
     )
 
 
@@ -367,27 +396,24 @@ async def get_chat(
     """Get a chat session by ID."""
     chat = db.get_chat(chat_id)
     if not chat:
-        raise HTTPException(
-            status_code=404, detail=f"Chat with ID {chat_id} not found")
+        raise HTTPException(status_code=404, detail=f"Chat with ID {chat_id} not found")
 
     return ChatSession(
         id=chat["id"],
         created_at=str(chat["created_at"]),
         updated_at=str(chat["updated_at"]),
-        metadata=chat["metadata"]
+        metadata=chat["metadata"],
     )
 
 
 @router.get("/chats/{chat_id}/messages", response_model=ChatHistory)
 async def get_chat_messages(
-    db: DbHandle,
-    chat_id: str = Path(..., description="The UUID of the chat session")
+    db: DbHandle, chat_id: str = Path(..., description="The UUID of the chat session")
 ) -> ChatHistory:
     """Get all messages for a chat session."""
     chat = db.get_chat(chat_id)
     if not chat:
-        raise HTTPException(
-            status_code=404, detail=f"Chat with ID {chat_id} not found")
+        raise HTTPException(status_code=404, detail=f"Chat with ID {chat_id} not found")
 
     db_messages = db.get_messages(chat_id)
     messages = [
@@ -397,78 +423,12 @@ async def get_chat_messages(
             role=msg["role"],
             content=msg["content"],
             created_at=str(msg["created_at"]),
-            metadata=msg["metadata"]
+            metadata=msg["metadata"],
         )
         for msg in db_messages
     ]
 
-    return ChatHistory(
-        chat_id=chat_id,
-        messages=messages
-    )
-
-
-@router.post("/main/model/{chat_id}", response_model=ChatMessageResponse)
-async def app_main_chat(
-    request: ChatMessageRequest,
-    db: DbHandle,
-    chat_id: str = Path(..., description="The UUID of the chat session"),
-) -> ChatMessageResponse:
-    """Add a message to a chat session and get a response using the Gemini model."""
-    # Import here to avoid circular imports
-    from .utils.main_model import get_gemini_response
-
-    # Check if chat exists
-    chat = db.get_chat(chat_id)
-    if not chat:
-        raise HTTPException(
-            status_code=404, detail=f"Chat with ID {chat_id} not found")
-
-    if not request or not request.content.strip():
-        raise HTTPException(
-            status_code=400, detail="Message content cannot be empty")
-
-    # Add user message to the database
-    (query_id, query_ts) = db.add_message(
-        chat_id, "user", request.content, request.metadata
-    )
-
-    # Get all messages for the chat
-    db_messages = db.get_messages(chat_id)
-
-    # Format messages for the Gemini model
-    formatted_messages = [
-        {
-            "role": msg["role"],
-            "content": msg["content"]
-        }
-        for msg in db_messages
-    ]
-
-    # Get response from Gemini model
-    response = get_gemini_response(formatted_messages)
-
-    # Add assistant response to database
-    (response_id, response_ts) = db.add_message(chat_id, "assistant", response)
-
-    return ChatMessageResponse(
-        message=Message(
-            id=query_id,
-            chat_id=chat_id,
-            role='user',
-            content=request.content,
-            created_at=query_ts,
-            metadata=request.metadata
-        ),
-        response=Message(
-            id=response_id,
-            chat_id=chat_id,
-            role='assistant',
-            content=response,
-            created_at=response_ts,
-            metadata={}
-        )
-    )
+    return ChatHistory(chat_id=chat_id, messages=messages)
 
 
 @router.post("/chats/{chat_id}/messages", response_model=ChatMessageResponse)
@@ -482,12 +442,10 @@ async def add_chat_message(
     # Check if chat exists
     chat = db.get_chat(chat_id)
     if not chat:
-        raise HTTPException(
-            status_code=404, detail=f"Chat with ID {chat_id} not found")
+        raise HTTPException(status_code=404, detail=f"Chat with ID {chat_id} not found")
 
     if not request or not request.content.strip():
-        raise HTTPException(
-            status_code=400, detail="Message content cannot be empty")
+        raise HTTPException(status_code=400, detail="Message content cannot be empty")
 
     (query_id, query_ts) = db.add_message(
         chat_id, "user", request.content, request.metadata
@@ -496,11 +454,7 @@ async def add_chat_message(
     db_messages = db.get_messages(chat_id)
 
     formatted_messages = [
-        {
-            "role": msg["role"],
-            "content": msg["content"]
-        }
-        for msg in db_messages
+        {"role": msg["role"], "content": msg["content"]} for msg in db_messages
     ]
 
     # Process the message with intent detection and knowledge base lookup
@@ -515,19 +469,19 @@ async def add_chat_message(
         message=Message(
             id=query_id,
             chat_id=chat_id,
-            role='user',
+            role="user",
             content=request.content,
             created_at=query_ts,
-            metadata=request.metadata
+            metadata=request.metadata,
         ),
         response=Message(
             id=response_id,
             chat_id=chat_id,
-            role='assistant',
+            role="assistant",
             content=response,
             created_at=response_ts,
-            metadata={}
-        )
+            metadata={},
+        ),
     )
 
 
@@ -539,8 +493,7 @@ async def delete_chat(
     """Delete a chat session and all its messages."""
     chat = db.get_chat(chat_id)
     if not chat:
-        raise HTTPException(
-            status_code=404, detail=f"Chat with ID {chat_id} not found")
+        raise HTTPException(status_code=404, detail=f"Chat with ID {chat_id} not found")
 
     success = db.delete_chat(chat_id)
     if not success:
