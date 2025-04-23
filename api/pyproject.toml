@@ -19,3 +19,7 @@ api = "api.main:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.13"
