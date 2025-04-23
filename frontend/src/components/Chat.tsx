@@ -2,13 +2,20 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ApiClientRest } from '../rest/api_client_rest';
 import { createChatApi, Message, Source } from '../rest/modules/chat';
 import { updateChatLastMessage } from '../services/chatStorage';
+import { useMCP } from '../contexts/MCPContext';
+
+interface ContentItem {
+  type: string;
+  text: string;
+}
 
 interface ChatProps {
   chatId: string;
   client: ApiClientRest;
+  onSendToAgent?: (message: string) => void; // <-- Add this
 }
 
-const Chat: React.FC<ChatProps> = ({ chatId, client }) => {
+const Chat: React.FC<ChatProps> = ({ chatId, client, onSendToAgent }) => {
   const chatApi = useMemo(() => createChatApi(client), [client]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -17,37 +24,30 @@ const Chat: React.FC<ChatProps> = ({ chatId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // We don't need any URL or pending message checking anymore
-  // The WelcomeScreen component awaits the response before navigating here
+  const { isConnected, selectedTool, executeTool } = useMCP();
 
-  // Load chat history when chatId changes
   useEffect(() => {
     if (!chatId) return;
-
     const loadChatHistory = async () => {
       try {
         const chatMessages = await chatApi.getChatMessages(chatId);
-
-        // Convert assistant to bot for rendering
-        const formattedMessages = chatMessages.map(msg => ({
-          ...msg,
-          role: msg.role === 'assistant' ? 'bot' as const : msg.role
-        })).filter(msg => msg.role !== 'system'); // Exclude system messages from display
-
-        // If we have messages from the server, replace our local state
+        const formattedMessages = chatMessages
+          .filter(msg => msg.role !== 'system')
+          .map(msg => ({
+            ...msg,
+            role: msg.role === 'assistant' ? 'bot' as const : msg.role
+          }));
         if (formattedMessages.length > 0) {
           setMessages(formattedMessages);
-          setIsLoading(false); // Turn off loading if it was on
+          setIsLoading(false);
         }
       } catch (error) {
-        // Error loading chat history
+        console.error('Error loading chat history:', error);
       }
     };
-
     loadChatHistory();
   }, [chatId, chatApi]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -56,39 +56,65 @@ const Chat: React.FC<ChatProps> = ({ chatId, client }) => {
 
   const sendMessage = async () => {
     if (!input.trim() || !chatId) return;
-
     const userMessage: Message = { role: 'user', content: input.trim() };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
-    // Show loading message immediately
-    setMessages((prev) => [
+    setMessages(prev => [
       ...prev,
       { role: 'bot', content: 'Thinking...', isLoading: true }
     ]);
 
     try {
-      const response = await chatApi.sendMessage(chatId, userMessage.content);
+      if (isConnected && selectedTool) {
+        const messageHistory = messages
+          .filter(msg => !msg.isLoading)
+          .map(msg => ({
+            role: msg.role === 'bot' ? 'assistant' : msg.role,
+            content: msg.content
+          }));
 
-      // Format assistant message as bot for rendering
-      const botMessage: Message = {
-        ...response.response,
-        role: 'bot'
-      };
+        const response = await executeTool(selectedTool, {
+          query: userMessage.content,
+          chat_history: messageHistory
+        });
 
-      // Replace the loading message with the actual response
-      setMessages((prev) => prev.filter(msg => !msg.isLoading).concat([botMessage]));
+        const contentText = Array.isArray(response.content)
+          ? response.content.map((c: ContentItem) => c.text).join('\n')
+          : typeof response.content === 'string'
+            ? response.content
+            : 'No response from tool';
 
-      // Update chat in storage with the new last message
+        const botMessage: Message = {
+          role: 'bot',
+          content: contentText,
+          sources: response.sources?.map((source: any, index: number) => ({
+            id: `mcp-source-${index}`,
+            title: source.title || 'Untitled Source',
+            content: source.content,
+            category: source.category || 'general',
+            relevance_score: source.relevance_score ?? 0
+          })) || []
+        };
+
+        setMessages(prev => prev.filter(msg => !msg.isLoading).concat([botMessage]));
+      } else {
+        const response = await chatApi.sendMessage(chatId, userMessage.content);
+        const botMessage: Message = {
+          ...response.response,
+          role: 'bot'
+        };
+        setMessages(prev => prev.filter(msg => !msg.isLoading).concat([botMessage]));
+      }
       updateChatLastMessage(chatId, userMessage.content);
     } catch (err) {
-      // Replace loading message with error message
-      setMessages((prev) =>
+      setMessages(prev =>
         prev.filter(msg => !msg.isLoading).concat([
-          { role: 'bot', content: `Error: Unable to fetch response: ${err}` }
+          { role: 'bot', content: `Error: Unable to fetch response. Please try again.` }
         ])
       );
+      console.error('Error sending message:', err);
     } finally {
       setIsLoading(false);
     }
@@ -111,28 +137,32 @@ const Chat: React.FC<ChatProps> = ({ chatId, client }) => {
     }
   };
 
-  const renderSources = (sources: Source[]) => {
-    return (
-      <div className="mt-2 text-sm p-2 bg-base-300 rounded-md">
-        <h4 className="font-bold mb-1">Sources:</h4>
-        {sources.map((source, idx) => (
-          <div key={idx} className="mb-2 p-2 bg-base-200 rounded">
-            <div className="font-semibold">{source.title}</div>
-            <div className="text-xs opacity-70">{source.content.substring(0, 150)}...</div>
-            <div className="text-xs mt-1 flex gap-2">
-              <span className="badge badge-sm">{source.category}</span>
-              {source.relevance_score && (
-                <span className="badge badge-sm badge-primary">Score: {source.relevance_score.toFixed(2)}</span>
-              )}
-            </div>
+  const renderSources = (sources: Source[]) => (
+    <div className="mt-2 text-sm p-2 bg-base-300 rounded-md">
+      <h4 className="font-bold mb-1">Sources:</h4>
+      {sources.map((source, idx) => (
+        <div key={idx} className="mb-2 p-2 bg-base-200 rounded">
+          <div className="font-semibold">{source.title}</div>
+          <div className="text-xs opacity-70">{source.content.substring(0, 150)}...</div>
+          <div className="text-xs mt-1 flex gap-2">
+            <span className="badge badge-sm">{source.category}</span>
+            <span className="badge badge-sm badge-primary">
+              Score: {(source.relevance_score ?? 0).toFixed(2)}
+            </span>
           </div>
-        ))}
-      </div>
-    );
-  };
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex-1 flex flex-col h-full">
+      {isConnected && selectedTool && (
+        <div className="bg-base-100 border-b px-4 py-2 text-sm">
+          Using MCP Agent: <span className="font-semibold">{selectedTool}</span>
+        </div>
+      )}
+
       <div className="flex-1 p-4 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center text-gray-400">
@@ -160,6 +190,16 @@ const Chat: React.FC<ChatProps> = ({ chatId, client }) => {
                     message.content
                   )}
                 </div>
+
+                {/* Add Send to Agent button for user messages */}
+                {message.role === 'user' && onSendToAgent && (
+                  <button
+                    className="text-xs mt-2 text-blue-500 hover:underline"
+                    onClick={() => onSendToAgent(message.content)}
+                  >
+                    Send to Agent
+                  </button>
+                )}
 
                 {message.sources && message.sources.length > 0 && (
                   <>

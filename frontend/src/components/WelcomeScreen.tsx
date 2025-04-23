@@ -1,19 +1,25 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ApiClientRest } from '../rest/api_client_rest';
-import { createChatApi } from '../rest/modules/chat';
-import { addChatFromApi, setActiveChat } from '../services/chatStorage';
+// src/components/WelcomeScreen.tsx
+import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useMCP } from "../contexts/MCPContext";
+import { ApiClientRest } from "../rest/api_client_rest";
+import { createChatApi } from "../rest/modules/chat";
+import { addChatFromApi, setActiveChat } from "../services/chatStorage";
+import MCPToolSelector from "./MCPToolSelector";
 
 interface WelcomeScreenProps {
   onChatCreated: (chatId: string) => void;
 }
 
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onChatCreated }) => {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const apiClient = useMemo(() => new ApiClientRest(), []);
   const chatApi = useMemo(() => createChatApi(apiClient), [apiClient]);
   const navigate = useNavigate();
+
+  // MCP integration
+  const { isConnected, selectedTool } = useMCP();
 
   const handleSubmit = async (e: React.FormEvent, messageOverride?: string) => {
     e.preventDefault();
@@ -27,19 +33,19 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onChatCreated }) => {
       // Create a new chat
       const chat = await chatApi.createChat();
 
-      // Store in session storage
-      addChatFromApi(chat, message);
+      // Store in session storage with MCP tool info if available
+      addChatFromApi(chat, message, selectedTool || undefined);
       setActiveChat(chat.id);
 
       // Send the initial message and await the response
       await chatApi.sendMessage(chat.id, message);
-      
+
       // Now that the message has been sent and response received,
       // navigate to the chat page
       navigate(`/chat/${chat.id}`);
       onChatCreated(chat.id);
     } catch (error) {
-      alert('Failed to create chat. Please try again.');
+      alert("Failed to create chat. Please try again.");
       setIsLoading(false);
     }
   };
@@ -60,7 +66,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onChatCreated }) => {
     setInput(question);
 
     // Create a synthetic form event and pass the question directly
-    const event = new Event('submit') as any;
+    const event = new Event("submit") as any;
     handleSubmit(event, question);
   };
 
@@ -68,12 +74,17 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onChatCreated }) => {
     <div className="flex flex-col items-center justify-center h-full max-w-5xl mx-auto p-4">
       <div className="text-center mb-8">
         <h1 className="text-4xl font-bold mb-4">Customer Support Assistant</h1>
-        <p className="text-xl opacity-80">
-          How can I help you today?
-        </p>
+        <p className="text-xl opacity-80">How can I help you today?</p>
       </div>
 
-      <form id="welcome-form" className="self-stretch mb-6" onSubmit={handleSubmit}>
+      {/* MCP Tool Selector */}
+      {isConnected && <MCPToolSelector className="w-full mb-6" />}
+
+      <form
+        id="welcome-form"
+        className="self-stretch mb-6"
+        onSubmit={handleSubmit}
+      >
         <div className="form-control w-full">
           <div className="input-group flex">
             <input
@@ -89,12 +100,24 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onChatCreated }) => {
               className="btn btn-primary"
               disabled={isLoading || !input.trim()}
             >
-              {isLoading ?
-                <span className="loading loading-spinner"></span> :
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              {isLoading ? (
+                <span className="loading loading-spinner"></span>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                  />
                 </svg>
-              }
+              )}
             </button>
           </div>
         </div>

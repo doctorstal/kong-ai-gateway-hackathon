@@ -1,3 +1,4 @@
+// src/components/ChatView.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ApiClientRest } from '../rest/api_client_rest';
@@ -6,20 +7,21 @@ import WelcomeScreen from './WelcomeScreen';
 import ChatSidebar from './ChatSidebar';
 import { setActiveChat } from '../services/chatStorage';
 
-const ChatView: React.FC = () => {
+interface ChatViewProps {
+  onSendToAgent?: (message: string) => void;
+}
+
+const ChatView: React.FC<ChatViewProps> = ({ onSendToAgent }) => {
   const { chatId } = useParams<{ chatId: string }>();
   const [activeChatId, setActiveChatId] = useState<string | null>(chatId || null);
   const apiClient = useMemo(() => new ApiClientRest(), []);
   const navigate = useNavigate();
 
-  // Check active chat from storage on mount
   useEffect(() => {
-    // If URL has chatId, use it
     if (chatId) {
       setActiveChatId(chatId);
       setActiveChat(chatId);
     } else {
-      // No active chat in URL - show welcome screen
       setActiveChatId(null);
     }
   }, [chatId]);
@@ -30,7 +32,6 @@ const ChatView: React.FC = () => {
   };
 
   const handleNewChat = () => {
-    // Clear active chat and go to welcome screen
     setActiveChat(null);
     setActiveChatId(null);
     navigate('/');
@@ -43,7 +44,6 @@ const ChatView: React.FC = () => {
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* Sidebar */}
       <div className="relative flex h-full">
         <ChatSidebar
           activeChatId={activeChatId}
@@ -51,11 +51,9 @@ const ChatView: React.FC = () => {
           onNewChat={handleNewChat}
         />
       </div>
-
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {activeChatId ? (
-          <Chat chatId={activeChatId} client={apiClient} />
+          <Chat chatId={activeChatId} client={apiClient} onSendToAgent={onSendToAgent} />
         ) : (
           <WelcomeScreen onChatCreated={handleChatCreated} />
         )}

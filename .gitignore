@@ -11,3 +11,4 @@ uv.lock
 yarn.lock
 package-lock.json
 .secrets
+node_modules
