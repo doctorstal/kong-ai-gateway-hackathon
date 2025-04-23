@@ -6,8 +6,8 @@ auth = (
     )
 
 fields = {
-    'from': '+46723726419',
-    'to': '+46723726419',
+    'from': '+46766868181',
+    'to': '+46xxxxxxxx',
     'voice_start': '{"play":"https://46elks.com/static/sound/make-call.mp3"}'
     }
 
