@@ -215,7 +215,7 @@ def determine_intent(opper: Opper, messages):
 
 
 @trace
-def search_knowledge_base(intent, query):
+def search_knowledge_base(intent, query, knowledge):
     """Search the knowledge base for information relevant to the user's query."""
     # Simple keyword matching
     query_terms = query.lower().split()
@@ -240,18 +240,18 @@ def search_knowledge_base(intent, query):
         }
         category = category_map.get(intent.intent)
 
-    for item in knowledge_base:
+    for item in knowledge:
         # Filter by category if specified
-        if category and item.get("category") != category:
+        if category and item.category != category:
             continue
 
         # Simple relevance scoring
-        content_text = (item["title"] + " " + item["content"]).lower()
+        content_text = (item.title + " " + item.content).lower()
         score = sum(1 for term in query_terms if term in content_text)
 
         if score > 0:
             # Create a copy with relevance score
-            result = item.copy()
+            result = item.__dict__.copy()
             result["relevance_score"] = score / len(query_terms)  # Normalize score
             results.append(result)
 
@@ -261,7 +261,7 @@ def search_knowledge_base(intent, query):
 
 
 @trace
-def process_message(opper: Opper, messages):
+def process_message(opper: Opper, messages, knowledge):
     """Process a user message and return relevant information."""
     # Extract the last user message
     user_message = next(
@@ -272,7 +272,7 @@ def process_message(opper: Opper, messages):
     intent = determine_intent(opper, messages)
 
     # Search knowledge base for relevant information
-    kb_results = search_knowledge_base(intent, user_message)
+    kb_results = search_knowledge_base(intent, user_message, knowledge)
 
     # Format results
     if kb_results:
@@ -354,6 +354,7 @@ async def get_knowledge_base() -> list[KnowledgeItem]:
             title=item["title"],
             content=item["content"],
             category=item["category"],
+            tags=item["tags"],
         )
         for item in knowledge_base
     ]
@@ -457,9 +458,11 @@ async def add_chat_message(
         {"role": msg["role"], "content": msg["content"]} for msg in db_messages
     ]
 
+    db_knowledge = db.get_configuration().knowledge_base
+
     # Process the message with intent detection and knowledge base lookup
     with opper.traces.start("customer_support_chat"):
-        analysis = process_message(opper, formatted_messages)
+        analysis = process_message(opper, formatted_messages, db_knowledge)
         response = bake_response(opper, formatted_messages, analysis)
 
     # Add assistant response to database

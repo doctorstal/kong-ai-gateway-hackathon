@@ -29,6 +29,7 @@ const Main: React.FC = () => {
         <div className="flex-1 flex overflow-hidden">
           <Routes>
             <Route path="/chat" element={<ChatView />} />
+            <Route path="/chat/:chatId" element={<ChatView />} />
             <Route path="/combined" element={<CombinedView />} />
             <Route path="/" element={<CombinedView />} />
           </Routes>

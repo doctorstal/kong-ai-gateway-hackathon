@@ -3,12 +3,13 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 import time
 from couchbase.cluster import Cluster
+from couchbase.collection import Collection
 from couchbase.exceptions import DocumentNotFoundException
 from couchbase.options import ClusterOptions, QueryOptions
 from couchbase.auth import PasswordAuthenticator
 from couchbase.result import result
 
-from ..models import Configuration
+from ..models import Configuration, KnowledgeItem
 
 from ..utils import log
 
@@ -38,9 +39,8 @@ class CouchbaseChatClient:
         self.cluster = None
         self.bucket = None
         self.scope = None
-        self.chats = None
+        self.chats: Collection = None
         self.messages = None
-        self.configuration = None
         self._is_query_service_ready = False
 
     def connect(self) -> None:
@@ -330,7 +330,21 @@ class CouchbaseChatClient:
             result = self.configuration.get("config")
             if not result or not hasattr(result, "value") or not result.value:
                 return Configuration(knowledge_base=[], actions=[])
-            return result.value
+            config = Configuration(
+                knowledge_base=[
+                    KnowledgeItem(
+                        id=item["id"],
+                        content=item["content"],
+                        title=item["title"],
+                        category=item["category"],
+                        tags=item["tags"],
+                    )
+                    for item in result.value["knowledge_base"]
+                ],
+                actions=[],
+            )
+
+            return config
         except DocumentNotFoundException:
             return Configuration(knowledge_base=[], actions=[])
         except Exception:
@@ -354,6 +368,7 @@ class CouchbaseChatClient:
                     "title": item.title,
                     "content": item.content,
                     "category": item.category,
+                    "tags": item.tags,
                 }
                 for item in config.knowledge_base
             ],

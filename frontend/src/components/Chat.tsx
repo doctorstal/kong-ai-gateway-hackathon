@@ -27,6 +27,7 @@ const Chat: React.FC<ChatProps> = ({ chatId, client, onSendToAgent }) => {
   const { isConnected, selectedTool, executeTool } = useMCP();
 
   useEffect(() => {
+    console.log("chat id: " + chatId)
     if (!chatId) return;
     const loadChatHistory = async () => {
       try {
@@ -173,11 +174,10 @@ const Chat: React.FC<ChatProps> = ({ chatId, client, onSendToAgent }) => {
             {messages.map((message, index) => (
               <div
                 key={index}
-                className={`p-3 rounded ${
-                  message.role === 'user'
-                    ? 'bg-primary text-primary-content self-end'
-                    : 'bg-base-200'
-                } ${message.isLoading ? 'opacity-70' : ''}`}
+                className={`p-3 rounded ${message.role === 'user'
+                  ? 'bg-primary text-primary-content self-end'
+                  : 'bg-base-200'
+                  } ${message.isLoading ? 'opacity-70' : ''}`}
                 style={{ maxWidth: '80%', alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start' }}
               >
                 <div>
