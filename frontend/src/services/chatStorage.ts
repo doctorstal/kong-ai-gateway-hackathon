@@ -1,127 +1,61 @@
-import { ChatSession } from "../rest/modules/chat";
-
-// Type for storing basic session info
+// src/services/chatStorage.ts
 export interface StoredChatSession {
   id: string;
-  title: string; // Generated from first message or date
+  title: string;
   lastMessage?: string;
-  lastUpdated: string;
+  createdAt: number;
+  mcpTool?: string; // Add MCP tool info
 }
 
-const CHATS_STORAGE_KEY = 'customer_support_chats';
-const ACTIVE_CHAT_KEY = 'active_chat_id';
+export function getStoredChats(): StoredChatSession[] {
+  const chatsJson = localStorage.getItem('chats');
+  return chatsJson ? JSON.parse(chatsJson) : [];
+}
 
-// Get all chat sessions from session storage
-export const getStoredChats = (): StoredChatSession[] => {
-  const chatsJson = sessionStorage.getItem(CHATS_STORAGE_KEY);
-  if (!chatsJson) return [];
-
-  try {
-    return JSON.parse(chatsJson);
-  } catch (e) {
-    // Error parsing stored chats
-    return [];
-  }
-};
-
-// Save a chat session to storage
-export const storeChat = (chat: StoredChatSession): void => {
-  const chats = getStoredChats();
-
-  // Check if chat already exists
-  const existingIndex = chats.findIndex(c => c.id === chat.id);
-  if (existingIndex >= 0) {
-    // Update existing chat
-    chats[existingIndex] = chat;
-  } else {
-    // Add new chat
-    chats.push(chat);
-  }
-
-  // Sort by last updated date (newest first)
-  chats.sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime());
-
-  // Save to session storage
-  sessionStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats));
-};
-
-// Remove a chat from storage
-export const removeStoredChat = (chatId: string): void => {
-  const chats = getStoredChats().filter(chat => chat.id !== chatId);
-  sessionStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats));
-
-  // If removing the active chat, clear the active chat
-  if (getActiveChat() === chatId) {
-    setActiveChat(null);
-  }
-};
-
-// Get title for a new chat (based on time if no message)
-export const getChatTitle = (firstMessage?: string): string => {
-  if (firstMessage && firstMessage.trim()) {
-    // Use the first few words of the message
-    const words = firstMessage.trim().split(/\s+/);
-    const titleWords = words.slice(0, 5);
-    let title = titleWords.join(' ');
-
-    // Add ellipsis if truncated
-    if (words.length > 5) {
-      title += '...';
-    }
-
-    return title;
-  }
-
-  // Default to date/time if no message
-  return new Date().toLocaleString();
-};
-
-// Update a chat title
-export const updateChatTitle = (chatId: string, title: string): void => {
-  const chats = getStoredChats();
-  const chat = chats.find(c => c.id === chatId);
-
-  if (chat) {
-    chat.title = title;
-    sessionStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats));
-  }
-};
-
-// Update the last message for a chat
-export const updateChatLastMessage = (chatId: string, message: string): void => {
-  const chats = getStoredChats();
-  const chat = chats.find(c => c.id === chatId);
-
-  if (chat) {
-    chat.lastMessage = message;
-    chat.lastUpdated = new Date().toISOString();
-    storeChat(chat);
-  }
-};
-
-// Store a new chat from the API response
-export const addChatFromApi = (chat: ChatSession, firstMessage?: string): void => {
-  const storedChat: StoredChatSession = {
+export function addChatFromApi(chat: any, firstMessage: string, mcpTool?: string): void {
+  const storedChats = getStoredChats();
+  
+  const chatToStore: StoredChatSession = {
     id: chat.id,
-    title: getChatTitle(firstMessage),
-    lastUpdated: chat.updated_at || new Date().toISOString()
+    title: firstMessage.substring(0, 30) + (firstMessage.length > 30 ? '...' : ''),
+    lastMessage: firstMessage,
+    createdAt: Date.now(),
+    mcpTool // Store the MCP tool if provided
   };
+  
+  storedChats.push(chatToStore);
+  localStorage.setItem('chats', JSON.stringify(storedChats));
+  
+  // Trigger storage event for other components
+  window.dispatchEvent(new Event('storage'));
+}
 
-  storeChat(storedChat);
-};
-
-// Set the active chat in session storage
-export const setActiveChat = (chatId: string | null): void => {
-  if (chatId) {
-    sessionStorage.setItem(ACTIVE_CHAT_KEY, chatId);
-  } else {
-    sessionStorage.removeItem(ACTIVE_CHAT_KEY);
+export function updateChatLastMessage(chatId: string, message: string): void {
+  const storedChats = getStoredChats();
+  const chatIndex = storedChats.findIndex(c => c.id === chatId);
+  
+  if (chatIndex !== -1) {
+    storedChats[chatIndex].lastMessage = message;
+    localStorage.setItem('chats', JSON.stringify(storedChats));
+    window.dispatchEvent(new Event('storage'));
   }
-};
+}
 
-// Get the active chat from session storage
-export const getActiveChat = (): string | null => {
-  return sessionStorage.getItem(ACTIVE_CHAT_KEY);
-};
+export function removeStoredChat(chatId: string): void {
+  const storedChats = getStoredChats();
+  const filteredChats = storedChats.filter(c => c.id !== chatId);
+  localStorage.setItem('chats', JSON.stringify(filteredChats));
+  window.dispatchEvent(new Event('storage'));
+}
 
-// Removed setPendingMessage and getPendingMessage functionality
+export function setActiveChat(chatId: string | null): void {
+  if (chatId) {
+    localStorage.setItem('activeChat', chatId);
+  } else {
+    localStorage.removeItem('activeChat');
+  }
+}
+
+export function getActiveChat(): string | null {
+  return localStorage.getItem('activeChat');
+}
