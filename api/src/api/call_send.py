@@ -1,8 +1,8 @@
 import requests
 
 auth = (
-    'u7492ce1814e8ff2183c5bc225bf5cb51',
-    'A8AFAAC4408B0B684EC630FB1BCFF6E8'
+    '',
+    ''
     )
 
 fields = {
