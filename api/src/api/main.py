@@ -6,13 +6,17 @@ from opperai import Opper
 import logging
 import time
 
+from api import config_routes
+
 from .clients.couchbase import CouchbaseChatClient
 from .routes import router
+from .config_routes import config_router
 from .utils import log
 from . import conf
 
 log.init(conf.get_log_level())
 logger = log.get_logger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,7 +29,7 @@ async def lifespan(app: FastAPI):
         username=cb_conf.username,
         password=cb_conf.password,
         bucket_name=cb_conf.bucket,
-        scope=cb_conf.scope
+        scope=cb_conf.scope,
     )
     
     # Attempt to connect with a retry loop
@@ -65,13 +69,15 @@ async def lifespan(app: FastAPI):
         app.state.db.close()
         logger.info("Closed Couchbase connection")
 
+
 app = FastAPI(
     title="Customer Support Chat API",
     version="1.0.0",
     docs_url="/docs",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 app.include_router(router, prefix="/api")
+app.include_router(config_router, prefix="/config")
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,6 +86,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 def main():
     if not conf.validate():
@@ -93,5 +100,5 @@ def main():
         port=http_conf.port,
         reload=http_conf.autoreload,
         log_level="debug" if http_conf.debug else "info",
-        log_config=None
+        log_config=None,
     )

@@ -3,12 +3,17 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 import time
 from couchbase.cluster import Cluster
+from couchbase.exceptions import DocumentNotFoundException
 from couchbase.options import ClusterOptions, QueryOptions
 from couchbase.auth import PasswordAuthenticator
+from couchbase.result import result
+
+from ..models import Configuration
 
 from ..utils import log
 
 logger = log.get_logger(__name__)
+
 
 class CouchbaseChatClient:
     def __init__(
@@ -19,7 +24,8 @@ class CouchbaseChatClient:
         bucket_name: str = None,
         scope: str = "_default",
         chats_coll: str = "chats",
-        messages_coll: str = "chat_messages"
+        messages_coll: str = "chat_messages",
+        configuration_coll: str = "configuration",
     ):
         self.url = url
         self.username = username
@@ -28,11 +34,13 @@ class CouchbaseChatClient:
         self.scope_name = scope
         self.chats_coll = chats_coll
         self.messages_coll = messages_coll
+        self.configuration_coll = configuration_coll
         self.cluster = None
         self.bucket = None
         self.scope = None
         self.chats = None
         self.messages = None
+        self.configuration = None
         self._is_query_service_ready = False
 
     def connect(self) -> None:
@@ -63,7 +71,7 @@ class CouchbaseChatClient:
             bucket = self.cluster.bucket(self.bucket_name)
             collection_manager = bucket.collections()
 
-            for coll in [self.messages_coll, self.chats_coll]:
+            for coll in [self.messages_coll, self.chats_coll, self.configuration_coll]:
                 try:
                     collection_manager.create_collection(self.scope_name, coll)
                     logger.info(f"Created collection: {coll}")
@@ -71,19 +79,20 @@ class CouchbaseChatClient:
                     if "already exists" in str(e):
                         pass
                     else:
-                        logger.warning(
-                            f"Error creating collection {coll}: {str(e)}"
-                        )
+                        logger.warning(f"Error creating collection {coll}: {str(e)}")
 
             self.chats = self.scope.collection(self.chats_coll)
             self.messages = self.scope.collection(self.messages_coll)
+            self.configuration = self.scope.collection(self.configuration_coll)
 
             logger.info("Collections initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing collections: {str(e)}")
             raise
 
-    def await_up(self, max_retries: int = 30, initial_delay: float = 1.0, max_delay: float = 10.0) -> None:
+    def await_up(
+        self, max_retries: int = 30, initial_delay: float = 1.0, max_delay: float = 10.0
+    ) -> None:
         """
         Wait until the Couchbase query service is available by running a simple query in a loop.
 
@@ -127,7 +136,9 @@ class CouchbaseChatClient:
                     raise
 
         # If we've exhausted all retries
-        raise Exception(f"Couchbase query service not available after {max_retries} attempts")
+        raise Exception(
+            f"Couchbase query service not available after {max_retries} attempts"
+        )
 
     def create_chat(self, metadata: Dict[str, Any] = None) -> str:
         """
@@ -148,7 +159,7 @@ class CouchbaseChatClient:
             "id": chat_id,
             "created_at": now,
             "updated_at": now,
-            "metadata": metadata or {}
+            "metadata": metadata or {},
         }
 
         try:
@@ -160,11 +171,7 @@ class CouchbaseChatClient:
             raise
 
     def add_message(
-        self,
-        chat_id: str,
-        role: str,
-        content: str,
-        metadata: Dict[str, Any] = None
+        self, chat_id: str, role: str, content: str, metadata: Dict[str, Any] = None
     ) -> Tuple[int, str]:
         """
         Add a message to an existing chat session.
@@ -201,7 +208,7 @@ class CouchbaseChatClient:
                 "role": role,
                 "content": content,
                 "created_at": now.isoformat(),
-                "metadata": metadata or {}
+                "metadata": metadata or {},
             }
 
             self.messages.upsert(message_key, message_doc)
@@ -228,7 +235,7 @@ class CouchbaseChatClient:
         try:
             result = self.chats.get(chat_id)
 
-            if not result or not hasattr(result, 'value') or not result.value:
+            if not result or not hasattr(result, "value") or not result.value:
                 return None
 
             return result.value
@@ -304,6 +311,53 @@ class CouchbaseChatClient:
             return True
         except Exception:
             logger.error("Failed to delete chat.")
+            raise
+
+    def get_configuration(self) -> Configuration:
+        """
+        Get current configuration
+
+        Returns:
+            Current configuration stored in db
+        """
+        if not self.configuration:
+            self.init()
+
+        # Make sure the query service is available
+        self.await_up()
+
+        try:
+            result = self.configuration.get("config")
+            if not result or not hasattr(result, "value") or not result.value:
+                return Configuration(knowledge_base=[], actions=[])
+            return result.value
+        except DocumentNotFoundException:
+            return Configuration(knowledge_base=[], actions=[])
+        except Exception:
+            logger.exception("Failed to get messages.")
+            raise
+
+    def set_configuration(self, config: Configuration) -> bool:
+        """
+        Set configuration
+        """
+        if not self.configuration:
+            self.init()
+
+        self.await_up()
+
+        now = datetime.utcnow().isoformat()
+        doc = {
+            "knowledge_base": config.knowledge_base,
+            "actions": config.actions,
+            "updated_at": now,
+        }
+
+        try:
+            self.configuration.upsert("config", doc)
+            return True
+        except Exception:
+            logger.exception("Failed to save configuration")
             raise
 
     def close(self) -> None:
