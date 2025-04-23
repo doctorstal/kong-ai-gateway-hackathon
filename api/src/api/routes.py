@@ -19,7 +19,7 @@ knowledge_base = [
         "content": (
             "Please locate the Primary Cognition Node and gently tap it with a licensed Calibration Wand (Model F or newer). "
             "Then recite the Device Identification Limerick while standing on a conductive surface. "
-            "If smoke begins to leak from the vents, you’ve done it correctly."
+            "If smoke begins to leak from the vents, you've done it correctly."
         ),
         "category": "troubleshooting",
         "tags": ["reset", "calibration", "smoke"]
@@ -92,8 +92,8 @@ knowledge_base = [
         "id": "kb-008",
         "title": "Can I talk to someone on the phone?",
         "content": (
-            "Absolutely. You can reach our customer liaison relay at **1-800-55** followed by the four-digit sequence found in Column IX, Row 7 of your device’s original packing insert. "
-            "If you recycled the box, you’ll need to undergo the Regret Verification Process."
+            "Absolutely. You can reach our customer liaison relay at **1-800-55** followed by the four-digit sequence found in Column IX, Row 7 of your device's original packing insert. "
+            "If you recycled the box, you'll need to undergo the Regret Verification Process."
         ),
         "category": "support",
         "tags": ["phone", "support", "contact"]
@@ -105,9 +105,11 @@ def get_db_handle(request: Request) -> CouchbaseChatClient:
     """Util for getting the Couchbase client from the request state."""
     return request.app.state.db
 
+
 def get_opper_handle(request: Request) -> Opper:
     """Util for getting the Opper client from the request state."""
     return request.app.state.opper
+
 
 DbHandle = Annotated[CouchbaseChatClient, Depends(get_db_handle)]
 OpperHandle = Annotated[Opper, Depends(get_opper_handle)]
@@ -115,12 +117,17 @@ OpperHandle = Annotated[Opper, Depends(get_opper_handle)]
 #### Models ####
 
 ## Basic Response ##
+
+
 class MessageResponse(BaseModel):
     message: str
 
 ## Chat Session ##
+
+
 class CreateChatRequest(BaseModel):
     metadata: dict[str, Any] | None = None
+
 
 class ChatSession(BaseModel):
     id: str
@@ -129,6 +136,8 @@ class ChatSession(BaseModel):
     metadata: dict[str, Any]
 
 ## Messages ##
+
+
 class Message(BaseModel):
     id: int | None = None
     chat_id: str | None = None
@@ -137,19 +146,24 @@ class Message(BaseModel):
     created_at: str | None = None
     metadata: dict[str, Any] | None = None
 
+
 class ChatMessageRequest(BaseModel):
     content: str
     metadata: dict[str, Any] | None = None
 
+
 class ChatMessageResponse(BaseModel):
     message: Message
     response: Message
+
 
 class ChatHistory(BaseModel):
     chat_id: str
     messages: list[Message]
 
 ## Knowledge Base ##
+
+
 class KnowledgeItem(BaseModel):
     id: str
     title: str
@@ -158,19 +172,25 @@ class KnowledgeItem(BaseModel):
     relevance_score: float | None = None
     tags: list[str] | None = None
 
+
 class KnowledgeSearchResponse(BaseModel):
     items: list[KnowledgeItem]
 
 ## Intent Classification ##
+
+
 class IntentClassification(BaseModel):
     thoughts: str
-    intent: Literal["troubleshooting", "warranty", "return_policy", "service", "parts", "unsupported"]
+    intent: Literal["troubleshooting", "warranty",
+                    "return_policy", "service", "parts", "unsupported"]
+
 
 class KnowledgeResult(BaseModel):
     thoughts: str
     relevant_items: list[dict[str, Any]]
 
 #### Helper Functions ####
+
 
 @trace
 def determine_intent(opper: Opper, messages):
@@ -190,6 +210,7 @@ def determine_intent(opper: Opper, messages):
         output_type=IntentClassification
     )
     return intent
+
 
 @trace
 def search_knowledge_base(intent, query):
@@ -223,19 +244,22 @@ def search_knowledge_base(intent, query):
         if score > 0:
             # Create a copy with relevance score
             result = item.copy()
-            result["relevance_score"] = score / len(query_terms)  # Normalize score
+            result["relevance_score"] = score / \
+                len(query_terms)  # Normalize score
             results.append(result)
 
     # Sort by relevance and limit results
     results.sort(key=lambda x: x["relevance_score"], reverse=True)
     return results[:5]  # Return top 5 results
 
+
 @trace
 def process_message(opper: Opper, messages):
     """Process a user message and return relevant information."""
     # Extract the last user message
     user_message = next(
-        (msg["content"] for msg in reversed(messages) if msg["role"] == "user"),
+        (msg["content"]
+         for msg in reversed(messages) if msg["role"] == "user"),
         ""
     )
 
@@ -264,6 +288,7 @@ def process_message(opper: Opper, messages):
             "message": "I couldn't find specific information about that in our knowledge base."
         }
 
+
 @trace
 def bake_response(opper: Opper, messages, analysis=None):
     """Generate a response using Opper."""
@@ -275,11 +300,13 @@ def bake_response(opper: Opper, messages, analysis=None):
         # Add context from knowledge base if available
         if analysis.get("found_relevant_info", False) and "kb_context" in analysis:
             # Find existing system message or add a new one
-            system_msg_index = next((i for i, msg in enumerate(ai_messages) if msg["role"] == "system"), None)
+            system_msg_index = next((i for i, msg in enumerate(
+                ai_messages) if msg["role"] == "system"), None)
 
             if system_msg_index is not None:
                 # Update existing system message
-                ai_messages[system_msg_index]["content"] += f"\n\nRelevant information from our knowledge base:\n{analysis['kb_context']}"
+                ai_messages[system_msg_index][
+                    "content"] += f"\n\nRelevant information from our knowledge base:\n{analysis['kb_context']}"
             else:
                 # Add new system message
                 ai_messages.insert(0, {
@@ -304,9 +331,11 @@ def bake_response(opper: Opper, messages, analysis=None):
 
 #### Routes ####
 
+
 @router.get("", response_model=MessageResponse)
 async def hello() -> MessageResponse:
     return MessageResponse(message="Hello from the Customer Support Chat API!")
+
 
 @router.post("/chats", response_model=ChatSession)
 async def create_chat(
@@ -329,6 +358,7 @@ async def create_chat(
         metadata=chat["metadata"]
     )
 
+
 @router.get("/chats/{chat_id}", response_model=ChatSession)
 async def get_chat(
     db: DbHandle,
@@ -337,7 +367,8 @@ async def get_chat(
     """Get a chat session by ID."""
     chat = db.get_chat(chat_id)
     if not chat:
-        raise HTTPException(status_code=404, detail=f"Chat with ID {chat_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Chat with ID {chat_id} not found")
 
     return ChatSession(
         id=chat["id"],
@@ -345,6 +376,7 @@ async def get_chat(
         updated_at=str(chat["updated_at"]),
         metadata=chat["metadata"]
     )
+
 
 @router.get("/chats/{chat_id}/messages", response_model=ChatHistory)
 async def get_chat_messages(
@@ -354,7 +386,8 @@ async def get_chat_messages(
     """Get all messages for a chat session."""
     chat = db.get_chat(chat_id)
     if not chat:
-        raise HTTPException(status_code=404, detail=f"Chat with ID {chat_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Chat with ID {chat_id} not found")
 
     db_messages = db.get_messages(chat_id)
     messages = [
@@ -374,6 +407,70 @@ async def get_chat_messages(
         messages=messages
     )
 
+
+@router.post("/main/model/{chat_id}", response_model=ChatMessageResponse)
+async def app_main_chat(
+    request: ChatMessageRequest,
+    db: DbHandle,
+    chat_id: str = Path(..., description="The UUID of the chat session"),
+) -> ChatMessageResponse:
+    """Add a message to a chat session and get a response using the Gemini model."""
+    # Import here to avoid circular imports
+    from .utils.main_model import get_gemini_response
+
+    # Check if chat exists
+    chat = db.get_chat(chat_id)
+    if not chat:
+        raise HTTPException(
+            status_code=404, detail=f"Chat with ID {chat_id} not found")
+
+    if not request or not request.content.strip():
+        raise HTTPException(
+            status_code=400, detail="Message content cannot be empty")
+
+    # Add user message to the database
+    (query_id, query_ts) = db.add_message(
+        chat_id, "user", request.content, request.metadata
+    )
+
+    # Get all messages for the chat
+    db_messages = db.get_messages(chat_id)
+
+    # Format messages for the Gemini model
+    formatted_messages = [
+        {
+            "role": msg["role"],
+            "content": msg["content"]
+        }
+        for msg in db_messages
+    ]
+
+    # Get response from Gemini model
+    response = get_gemini_response(formatted_messages)
+
+    # Add assistant response to database
+    (response_id, response_ts) = db.add_message(chat_id, "assistant", response)
+
+    return ChatMessageResponse(
+        message=Message(
+            id=query_id,
+            chat_id=chat_id,
+            role='user',
+            content=request.content,
+            created_at=query_ts,
+            metadata=request.metadata
+        ),
+        response=Message(
+            id=response_id,
+            chat_id=chat_id,
+            role='assistant',
+            content=response,
+            created_at=response_ts,
+            metadata={}
+        )
+    )
+
+
 @router.post("/chats/{chat_id}/messages", response_model=ChatMessageResponse)
 async def add_chat_message(
     request: ChatMessageRequest,
@@ -385,10 +482,12 @@ async def add_chat_message(
     # Check if chat exists
     chat = db.get_chat(chat_id)
     if not chat:
-        raise HTTPException(status_code=404, detail=f"Chat with ID {chat_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Chat with ID {chat_id} not found")
 
     if not request or not request.content.strip():
-        raise HTTPException(status_code=400, detail="Message content cannot be empty")
+        raise HTTPException(
+            status_code=400, detail="Message content cannot be empty")
 
     (query_id, query_ts) = db.add_message(
         chat_id, "user", request.content, request.metadata
@@ -431,6 +530,7 @@ async def add_chat_message(
         )
     )
 
+
 @router.delete("/chats/{chat_id}", response_model=MessageResponse)
 async def delete_chat(
     db: DbHandle,
@@ -439,7 +539,8 @@ async def delete_chat(
     """Delete a chat session and all its messages."""
     chat = db.get_chat(chat_id)
     if not chat:
-        raise HTTPException(status_code=404, detail=f"Chat with ID {chat_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Chat with ID {chat_id} not found")
 
     success = db.delete_chat(chat_id)
     if not success:
